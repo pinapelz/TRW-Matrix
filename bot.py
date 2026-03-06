@@ -41,5 +41,5 @@ async def trigger_responses(room, message):
             break
     if match:
         msg_text = match
-        await bot.api.send_text_message(room.room_id, f"{message.sender} {constants.TRIGGERS[msg_text]}")
+        await bot.api.send_text_message(room.room_id, f"{constants.TRIGGERS[msg_text]}")
 bot.run()
