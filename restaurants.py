@@ -1,103 +1,18 @@
-import sqlite3
-import random
 import os
+import db
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "restaurants.db")
-
-SEED_DATA = [
-]
-
-
-def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+CATEGORY = "restaurant"
+OLD_DB_PATH = os.path.join(os.path.dirname(__file__), "restaurants.db")
 
 
 def init_db():
-    with _get_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS restaurants (
-                id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                name     TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                note     TEXT NOT NULL DEFAULT '',
-                added_by TEXT NOT NULL DEFAULT 'unknown'
-            )
-        """)
-        conn.commit()
-
-        row = conn.execute("SELECT COUNT(*) AS cnt FROM restaurants").fetchone()
-        if row["cnt"] == 0:
-            conn.executemany(
-                "INSERT OR IGNORE INTO restaurants (name, note, added_by) VALUES (?, ?, ?)",
-                SEED_DATA,
-            )
-            conn.commit()
+    db.init_db()
+    db.migrate_from(OLD_DB_PATH, CATEGORY)
+    db.seed(CATEGORY)
 
 
-def _format_restaurant(row: sqlite3.Row) -> str:
+def _format(row) -> str:
     return f"{row['name']}\n- {row['note']}\nAdded by {row['added_by']}"
-
-
-def add_restaurant(name: str, note: str, added_by: str) -> str:
-    name = name.strip()
-    note = note.strip()
-    if not name:
-        return "❌ Restaurant name cannot be empty."
-    with _get_conn() as conn:
-        existing = conn.execute(
-            "SELECT id FROM restaurants WHERE name = ?", (name,)
-        ).fetchone()
-        if existing:
-            return f"❌ **{name}** is already in the list."
-        conn.execute(
-            "INSERT INTO restaurants (name, note, added_by) VALUES (?, ?, ?)",
-            (name, note, added_by),
-        )
-        conn.commit()
-    return f"✅ Added **{name}** to the restaurant list!"
-
-
-def remove_restaurant(name: str) -> str:
-    name = name.strip()
-    if not name:
-        return "❌ Please provide a restaurant name to remove."
-    with _get_conn() as conn:
-        existing = conn.execute(
-            "SELECT id, name FROM restaurants WHERE name = ?", (name,)
-        ).fetchone()
-        if not existing:
-            return f"❌ No restaurant named **{name}** found. Names are case-insensitive."
-        actual_name = existing["name"]
-        conn.execute("DELETE FROM restaurants WHERE id = ?", (existing["id"],))
-        conn.commit()
-    return f"🗑️ Removed **{actual_name}** from the restaurant list."
-
-
-
-
-def find_restaurant(keyword: str = "") -> str:
-    keyword = keyword.strip().lower()
-    with _get_conn() as conn:
-        if keyword:
-            rows = conn.execute(
-                "SELECT name, note, added_by FROM restaurants WHERE LOWER(note) LIKE ?",
-                (f"%{keyword}%",),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT name, note, added_by FROM restaurants"
-            ).fetchall()
-
-    if not rows:
-        if keyword:
-            return f"🔍 No restaurants found with **{keyword}** in their notes."
-        return "No restaurants in the list yet. Use !addrestaurant to add one!"
-
-    pick = random.choice(rows)
-    label = f'🎲 Random pick (keyword: "{keyword}"):' if keyword else "🎲 Random pick:"
-    return f"{label}\n\n{_format_restaurant(pick)}"
-
 
 
 HELP_TEXT = (
@@ -108,7 +23,7 @@ HELP_TEXT = (
 )
 
 
-async def handle_restaurant_command(bot_api, room_id: str, sender: str, body: str):
+async def handle_restaurant_command(bot_api, room_id: str, sender: str, body: str, self_name: str):
     """
     Returns True if the message was handled as a restaurant command, False otherwise.
     Call this from your on_message_event listener.
@@ -116,9 +31,9 @@ async def handle_restaurant_command(bot_api, room_id: str, sender: str, body: st
     stripped = body.strip()
     lower = stripped.lower()
 
-    # Passive trigger: any message containing "where to eat"
-    if "where to eat" in lower and not lower.startswith("!"):
-        reply = find_restaurant()
+    if ("where to eat"  in lower or "what to eat" in lower) and not lower.startswith("!") and self_name in lower:
+        pick = db.find_item(CATEGORY)
+        reply = f"🎲 Random pick:\n\n{_format(pick)}" if pick else "No restaurants in the list yet. Use !addrestaurant to add one!"
         await bot_api.send_text_message(room_id, reply)
         return True
 
@@ -139,9 +54,9 @@ async def handle_restaurant_command(bot_api, room_id: str, sender: str, body: st
         else:
             name = rest
             note = ""
-        # Derive a friendly display name from the Matrix sender ID (@user:server -> user)
         added_by = sender.lstrip("@").split(":")[0]
-        reply = add_restaurant(name, note, added_by)
+        error = db.add_item(CATEGORY, name, added_by, note=note)
+        reply = error if error else f"✅ Added **{name.strip()}** to the restaurant list!"
         await bot_api.send_text_message(room_id, reply)
         return True
 
@@ -154,14 +69,23 @@ async def handle_restaurant_command(bot_api, room_id: str, sender: str, body: st
                 "Usage: !removerestaurant <name>\nExample: !removerestaurant MCDONALDS",
             )
             return True
-        reply = remove_restaurant(name)
+        result = db.remove_item(CATEGORY, name)
+        if result is None:
+            reply = f"❌ No restaurant named **{name}** found. Names are case-insensitive."
+        else:
+            reply = f"🗑️ Removed **{result}** from the restaurant list."
         await bot_api.send_text_message(room_id, reply)
         return True
 
     # !findrestaurant [keyword]
     if lower.startswith("!findrestaurant"):
         keyword = stripped[len("!findrestaurant"):].strip()
-        reply = find_restaurant(keyword)
+        pick = db.find_item(CATEGORY, keyword)
+        if pick is None:
+            reply = f"🔍 No restaurants found with **{keyword}** in their notes." if keyword else "No restaurants in the list yet. Use !addrestaurant to add one!"
+        else:
+            label = f'🎲 Random pick (keyword: "{keyword}"):' if keyword else "🎲 Random pick:"
+            reply = f"{label}\n\n{_format(pick)}"
         await bot_api.send_text_message(room_id, reply)
         return True
 

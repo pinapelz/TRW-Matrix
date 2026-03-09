@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 import constants
 import restaurants
+import games
 
 load_dotenv()
 
@@ -10,11 +11,13 @@ HOMESERVER = os.environ.get("HOMESERVER", "")
 USERNAME = os.environ.get("USERNAME", "")
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "")
 TARGET_ROOM_ID = os.environ.get("TARGET_ROOM_ID", "")
+SELF = os.environ.get("SELF")
 
 creds = botlib.Creds(homeserver=HOMESERVER, username=USERNAME, access_token=ACCESS_TOKEN)
 bot = botlib.Bot(creds)
 
 restaurants.init_db()
+games.init_db()
 
 
 @bot.listener.on_message_event
@@ -24,7 +27,10 @@ async def trigger_responses(room, message):
     if room.room_id != TARGET_ROOM_ID:
         return
 
-    if await restaurants.handle_restaurant_command(bot.api, room.room_id, message.sender, message.body):
+    if await restaurants.handle_restaurant_command(bot.api, room.room_id, message.sender, message.body, SELF):
+        return
+
+    if await games.handle_game_command(bot.api, room.room_id, message.sender, message.body, SELF):
         return
 
     msg_text = message.body.strip().lower()

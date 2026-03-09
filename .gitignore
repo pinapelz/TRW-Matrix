@@ -11,4 +11,4 @@ wheels/
 .env
 session.txt
 *.db
-seed.txt
+seeds
