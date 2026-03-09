@@ -26,7 +26,7 @@ async def handle_game_command(bot_api, room_id: str, sender: str, body: str, sel
     lower = stripped.lower()
 
     # Passive trigger: any message containing "what to play"
-    if "what to play" in lower and not lower.startswith("!") and self_name in lower:
+    if "what to play" in lower and not lower.startswith("!"):
         pick = db.find_item(CATEGORY)
         reply = f"Fresh from the list of considerations:\n\n{_format(pick)}" if pick else "No games in the list yet. Use !addgame to add one!"
         await bot_api.send_text_message(room_id, reply)
