@@ -31,7 +31,7 @@ async def handle_restaurant_command(bot_api, room_id: str, sender: str, body: st
     stripped = body.strip()
     lower = stripped.lower()
 
-    if ("where to eat"  in lower or "what to eat" in lower) and not lower.startswith("!") and self_name in lower:
+    if ("where to eat"  in lower or "what to eat" in lower) and not lower.startswith("!"):
         pick = db.find_item(CATEGORY)
         reply = f"🎲 Random pick:\n\n{_format(pick)}" if pick else "No restaurants in the list yet. Use !addrestaurant to add one!"
         await bot_api.send_text_message(room_id, reply)
