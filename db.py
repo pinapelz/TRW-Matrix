@@ -119,6 +119,25 @@ def remove_item(category: str, name: str) -> str | None:
     return actual_name
 
 
+def count_items(category: str) -> int:
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM items WHERE category = ?", (category,)
+        ).fetchone()
+    return row["cnt"]
+
+
+def get_item_by_index(category: str, index: int) -> sqlite3.Row | None:
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name, note, added_by FROM items WHERE category = ? ORDER BY id ASC",
+            (category,),
+        ).fetchall()
+    if not rows or index < 1 or index > len(rows):
+        return None
+    return rows[index - 1]
+
+
 def find_item(category: str, keyword: str = "") -> sqlite3.Row | None:
     """Return a random item from the category, optionally filtered by keyword in note."""
     keyword = keyword.strip().lower()

@@ -27,8 +27,18 @@ async def handle_game_command(bot_api, room_id: str, sender: str, body: str, sel
 
     # Passive trigger: any message containing "what to play"
     if "what to play" in lower and not lower.startswith("!"):
-        pick = db.find_item(CATEGORY)
-        reply = f"Fresh from the list of considerations:\n\n{_format(pick)}" if pick else "No games in the list yet. Use !addgame to add one!"
+        after = lower.split("what to play", 1)[1].strip()
+        if after.isdigit():
+            index = int(after)
+            total = db.count_items(CATEGORY)
+            pick = db.get_item_by_index(CATEGORY, index)
+            if pick is None:
+                reply = f"❌ Index {index} is out of range. Valid range: 1–{total}."
+            else:
+                reply = f"#{index} from the list of considerations:\n\n{_format(pick)}"
+        else:
+            pick = db.find_item(CATEGORY)
+            reply = f"Fresh from the list of considerations:\n\n{_format(pick)}" if pick else "No games in the list yet. Use !addgame to add one!"
         await bot_api.send_text_message(room_id, reply)
         return True
 
